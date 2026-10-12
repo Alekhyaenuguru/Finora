@@ -1,7 +1,9 @@
+
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:8080/api"
+  "https://finora-backend-29ay.onrender.com/api"
 ).replace(/\/+$/, "");
+
 
 export async function getTransactions() {
   const response = await fetch(`${API_BASE_URL}/transactions`);
