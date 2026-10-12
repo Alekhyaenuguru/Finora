@@ -1,6 +1,7 @@
 
 package com.finora.backend;
 
+import com.finora.backend.model.User;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -17,7 +18,7 @@ public class Transaction {
     private String title;
 
     @Column(nullable = false, length = 30)
-    private String type; // INCOME or EXPENSE
+    private String type;
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;
@@ -29,6 +30,10 @@ public class Transaction {
 
     @Column(length = 500)
     private String note;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     public Transaction() {}
 
@@ -52,4 +57,7 @@ public class Transaction {
 
     public String getNote() { return note; }
     public void setNote(String note) { this.note = note; }
+
+    public User getUser() { return user; }
+    public void setUser(User user) { this.user = user; }
 }

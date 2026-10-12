@@ -30,12 +30,20 @@ import {
   Cell,
 } from "recharts";
 
+
 import {
   getTransactions,
   createTransaction,
   updateTransaction,
   deleteTransaction,
+  getBudgets,
+  createBudget as saveBudget,
+  login,
+  register,
+  getToken,
+  clearAuth,
 } from "./services/api";
+
 
 import "./App.css";
 const COLORS = [
@@ -107,6 +115,15 @@ function normalizeTransaction(transaction) {
 }
 
 function App() {
+    const [isAuthenticated, setIsAuthenticated] = useState(
+    () => Boolean(getToken())
+  );
+  const [authMode, setAuthMode] = useState("login");
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -122,57 +139,61 @@ function App() {
 const [budgets, setBudgets] = useState([]);
 const [budgetLoading, setBudgetLoading] = useState(false);
 const [budgetError, setBudgetError] = useState("");
-
+const [currentUser, setCurrentUser] = useState(() => {
+  try {
+    return JSON.parse(localStorage.getItem("finora_user") || "null");
+  } catch {
+    return null;
+  }
+});
 const [budgetForm, setBudgetForm] = useState({
   category: "Food",
   monthlyLimit: "",
   budgetMonth: new Date().toISOString().slice(0, 7),
 });
 
+
+
 async function loadBudgets() {
   setBudgetLoading(true);
   setBudgetError("");
 
   try {
-const response = await fetch(
-  `${import.meta.env.VITE_API_BASE_URL}/budgets?month=${budgetForm.budgetMonth}`
-);
-    if (!response.ok) {
-      throw new Error(`Could not load budgets (${response.status})`);
-    }
+    const data = await getBudgets(budgetForm.budgetMonth);
 
-    const data = await response.json();
-    setBudgets(Array.isArray(data) ? data : [data]);
+    setBudgets(Array.isArray(data) ? data : data ? [data] : []);
+
+    // Reload transactions too, so budget spending is up to date.
+    await loadTransactions();
   } catch (error) {
-    setBudgetError(error.message || "Failed to load budgets.");
+    setBudgetError(error.message || "Failed to refresh budgets.");
+    console.error("Budget refresh failed:", error);
   } finally {
     setBudgetLoading(false);
   }
 }
+
+
 useEffect(() => {
-  loadBudgets();
-}, []);
+  if (isAuthenticated) {
+    loadBudgets();
+  }
+}, [isAuthenticated]);
+
 
 async function createBudget(event) {
   event.preventDefault();
   setBudgetError("");
 
   try {
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/budgets`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        category: budgetForm.category,
-        monthlyLimit: Number(budgetForm.monthlyLimit),
-        budgetMonth: budgetForm.budgetMonth,
-      }),
+    await saveBudget({
+      category: budgetForm.category,
+      monthlyLimit: Number(budgetForm.monthlyLimit),
+      budgetMonth: budgetForm.budgetMonth,
     });
 
-    if (!response.ok) {
-      throw new Error(`Could not save budget (${response.status})`);
-    }
-
     await loadBudgets();
+
     setBudgetForm((previous) => ({
       ...previous,
       monthlyLimit: "",
@@ -181,7 +202,40 @@ async function createBudget(event) {
     setBudgetError(error.message || "Failed to save budget.");
   }
 }
+  async function handleAuthSubmit(event) {
+    event.preventDefault();
+    setAuthError("");
+    setAuthLoading(true);
 
+    try {
+      if (authMode === "register") {
+        await register(authName.trim(), authEmail.trim(), authPassword);
+      } else {
+        await login(authEmail.trim(), authPassword);
+      }
+
+setCurrentUser(
+  JSON.parse(localStorage.getItem("finora_user") || "null")
+);
+setIsAuthenticated(true);
+await loadTransactions();
+await loadBudgets();
+    } catch (error) {
+      setAuthError(error.message || "Authentication failed.");
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+function handleLogout() {
+  clearAuth();
+  setCurrentUser(null);
+  setIsAuthenticated(false);
+  setTransactions([]);
+  setBudgets([]);
+  setAuthPassword("");
+  setAuthError("");
+}
   
 async function handleEditTransaction(transaction) {
   const title = window.prompt("Transaction title:", transaction.title);
@@ -273,9 +327,11 @@ async function loadTransactions() {
 }
 
 
-  useEffect(() => {
+useEffect(() => {
+  if (isAuthenticated) {
     loadTransactions();
-  }, []);
+  }
+}, [isAuthenticated]);
 
   const filteredByPeriod = useMemo(() => {
     const now = new Date();
@@ -447,7 +503,84 @@ const savedTransaction = normalizeTransaction(saved);
     setForm({ ...emptyForm, date: today });
     setModalOpen(true);
   }
+  if (!isAuthenticated) {
+    return (
+      <div className="auth-page">
+        <form className="auth-card" onSubmit={handleAuthSubmit}>
+          <div className="brand-mark">
+            <Wallet size={24} />
+          </div>
 
+          <h1>Welcome to Finora</h1>
+          <p>Manage your money with clarity.</p>
+
+          <h2>{authMode === "login" ? "Sign in" : "Create account"}</h2>
+
+          {authMode === "register" && (
+            <label>
+              Full name
+              <input
+                required
+                value={authName}
+                onChange={(event) => setAuthName(event.target.value)}
+                placeholder="Your name"
+              />
+            </label>
+          )}
+
+          <label>
+            Email
+            <input
+              required
+              type="email"
+              value={authEmail}
+              onChange={(event) => setAuthEmail(event.target.value)}
+              placeholder="you@example.com"
+            />
+          </label>
+
+          <label>
+            Password
+            <input
+              required
+              type="password"
+              minLength={6}
+              value={authPassword}
+              onChange={(event) => setAuthPassword(event.target.value)}
+              placeholder="Enter your password"
+            />
+          </label>
+
+          {authError && <p className="auth-error">{authError}</p>}
+
+          <button type="submit" disabled={authLoading}>
+            {authLoading
+              ? "Please wait..."
+              : authMode === "login"
+                ? "Sign in"
+                : "Create account"}
+          </button>
+
+          <p>
+            {authMode === "login"
+              ? "Don't have an account?"
+              : "Already have an account?"}
+            {" "}
+            <button
+              type="button"
+              className="auth-switch"
+              onClick={() => {
+                setAuthMode(authMode === "login" ? "register" : "login");
+                setAuthError("");
+              }}
+            >
+              {authMode === "login" ? "Register" : "Sign in"}
+            </button>
+          </p>
+        </form>
+      </div>
+    );
+  }
   return (
     <div className="finora-app">
       <aside className="sidebar">
@@ -493,14 +626,23 @@ const savedTransaction = normalizeTransaction(saved);
             <span>Settings</span>
           </a>
 
-          <div className="profile">
-            <div className="avatar">F</div>
-            <div className="profile-text">
-              <strong>Finora User</strong>
-              <span>Personal account</span>
-            </div>
-            <ChevronDown size={16} />
-          </div>
+              <div className="profile">
+                <div className="avatar">
+                  {(currentUser?.name || "F").charAt(0).toUpperCase()}
+                </div>
+                <div className="profile-text">
+                  <strong>{currentUser?.name || "Finora User"}</strong>
+                  <span>{currentUser?.email || "Personal account"}</span>
+                </div>
+                <ChevronDown size={16} />
+              </div>
+              <button
+                type="button"
+                className="sign-out-button"
+                onClick={handleLogout}
+              >
+                Sign out
+              </button>
         </div>
       </aside>
 
@@ -1040,54 +1182,80 @@ const savedTransaction = normalizeTransaction(saved);
   ) : budgets.length === 0 ? (
     <p>No budgets found for this month.</p>
   ) : (
-    <div className="budget-grid">
-      {budgets.map((budget) => {
-        const limit = Number(budget.monthlyLimit || 0);
-        const spent = Number(budget.spent || 0);
-        const percentage = limit > 0
-          ? Math.min((spent / limit) * 100, 100)
-          : 0;
+
+<div className="budget-grid">
+  {budgets.map((budget) => {
+    const limit = Number(budget.monthlyLimit || 0);
+
+    const spent = transactions
+      .filter((transaction) => {
+        const transactionMonth = String(
+          transaction.date || transaction.transactionDate || ""
+        ).slice(0, 7);
 
         return (
-          <article className="budget-card" key={budget.id}>
-            <div className="budget-card-heading">
-              <h3>{budget.category}</h3>
-              <span>
-                {Number(budget.percentage || 0).toFixed(0)}% used
-              </span>
-            </div>
-
-            <p>
-              ₹{spent.toLocaleString("en-IN")} spent of{" "}
-              ₹{limit.toLocaleString("en-IN")}
-            </p>
-
-            <div className="budget-progress">
-              <div
-                className={
-                  budget.exceeded ? "budget-progress-fill exceeded" : "budget-progress-fill"
-                }
-                style={{ width: `${percentage}%` }}
-              />
-            </div>
-
-            <p>
-              Remaining: ₹
-              {Number(budget.remaining ?? limit - spent).toLocaleString("en-IN")}
-            </p>
-
-            {budget.exceeded && (
-              <p className="budget-warning">Budget exceeded</p>
-            )}
-          </article>
+          transaction.type === "expense" &&
+          String(transaction.category).toLowerCase() ===
+            String(budget.category).toLowerCase() &&
+          transactionMonth === String(budget.budgetMonth).slice(0, 7)
         );
-      })}
-    </div>
+      })
+      .reduce(
+        (total, transaction) =>
+          total + Math.abs(Number(transaction.amount || 0)),
+        0
+      );
+
+    const percentage =
+      limit > 0 ? Math.min((spent / limit) * 100, 100) : 0;
+
+    const remaining = limit - spent;
+    const exceeded = spent > limit;
+
+    return (
+      <article className="budget-card" key={budget.id}>
+        <div className="budget-card-heading">
+          <h3>{budget.category}</h3>
+          <span>{percentage.toFixed(0)}% used</span>
+        </div>
+
+        <p>
+          ₹{spent.toLocaleString("en-IN")} spent of ₹
+          {limit.toLocaleString("en-IN")}
+        </p>
+
+        <div className="budget-progress">
+          <div
+            className={
+              exceeded
+                ? "budget-progress-fill exceeded"
+                : "budget-progress-fill"
+            }
+            style={{ width: `${percentage}%` }}
+          />
+        </div>
+
+        <p>
+          Remaining: ₹{remaining.toLocaleString("en-IN")}
+        </p>
+
+        {exceeded && (
+          <p className="budget-warning">Budget exceeded</p>
+        )}
+      </article>
+    );
+  })}
+</div>
+
   )}
 
-  <button type="button" onClick={loadBudgets}>
-    Refresh budgets
-  </button>
+<button
+  type="button"
+  onClick={loadBudgets}
+  disabled={budgetLoading}
+>
+  {budgetLoading ? "Refreshing..." : "Refresh budgets"}
+</button>
 </section>
 
       </main>

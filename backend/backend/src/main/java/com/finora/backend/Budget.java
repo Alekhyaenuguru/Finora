@@ -1,6 +1,7 @@
 
 package com.finora.backend;
 
+import com.finora.backend.model.User;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -13,7 +14,8 @@ import java.math.BigDecimal;
     name = "budgets",
     uniqueConstraints = {
         @UniqueConstraint(
-            columnNames = {"category", "budget_month"}
+            name = "uk_budget_user_category_month",
+            columnNames = {"user_id", "category", "budget_month"}
         )
     }
 )
@@ -22,6 +24,10 @@ public class Budget {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     @NotBlank(message = "Category is required")
     @Column(nullable = false)
@@ -49,6 +55,14 @@ public class Budget {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
     }
 
     public String getCategory() {
