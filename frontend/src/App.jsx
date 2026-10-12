@@ -134,10 +134,9 @@ async function loadBudgets() {
   setBudgetError("");
 
   try {
-    const response = await fetch(
-      `http://localhost:8080/api/budgets?month=${budgetForm.budgetMonth}`
-    );
-
+const response = await fetch(
+  `${import.meta.env.VITE_API_BASE_URL}/budgets?month=${budgetForm.budgetMonth}`
+);
     if (!response.ok) {
       throw new Error(`Could not load budgets (${response.status})`);
     }
@@ -159,7 +158,7 @@ async function createBudget(event) {
   setBudgetError("");
 
   try {
-    const response = await fetch("http://localhost:8080/api/budgets", {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/budgets`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
